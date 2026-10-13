@@ -9,11 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Set;
 
-/**
- * Reconhecedor recursivo descendente da BNF do CP2, sem AST.
- * Tradução direta da BNF conforme a Aula 6: um método por não-terminal,
- * alternativas com if/else, ε checado por FOLLOW e caudas recursivas.
- */
 public final class Parser {
     private final Scanner scanner;
     private final List<ParseError> errors = new ArrayList<>();
@@ -40,7 +35,7 @@ public final class Parser {
         return result;
     }
 
-    /** Adaptação categoria/lexema: não altera Token.java nem Scanner.java. */
+    /** verifica a categoria do token atual em lookahead.tipp = token atual.  */
     private String symbol() {
         switch (lookahead.tipo) {
             case IDENTIFICADOR: return "ID";
@@ -53,10 +48,13 @@ public final class Parser {
         }
     }
 
+    //symbol retorna o token atual e compara com o esperado, que é a string passada em is
     private boolean is(String expected) {
         return symbol().equals(expected);
     }
 
+    // pede um token pro scanner e coloca em lookahead como token atual. se tiver um erro, parser registra o erro e o token depois incrementa o contador
+    //registra os erros e continua ate um token que possa analisar
     private void readNext() {
         do {
             lookahead = scanner.nextToken();
@@ -67,6 +65,7 @@ public final class Parser {
         } while (lookahead.tipo == TokenType.ERRO);
     }
 
+    //consome o token atual e avanca
     private void advance() {
         if (!is("EOF")) {
             consumed++;
@@ -82,13 +81,14 @@ public final class Parser {
         report(name, message);
     }
 
-    // Aula 6: descarta até FOLLOW ou uma âncora de comando/bloco.
+    //descarta token ate encontrar um ponto de parada, que é um token que pertence a FOLLOW do não-terminal atual, ou EOF, ou ; ou }
+    //sync e um conjunto de strings que representa os tokens que podem ser usados como ponto de parada
     private void sincronizar(Set<String> sync) {
         while (!sync.contains(symbol()) && !is("EOF") && !is(";") && !is("}")) {
             advance();
         }
     }
-
+    //confere se o token atual e o esperado, se for, consome o token e avanca. Se nao for, registra o erro e tenta sincronizar para continuar a analise.
     private void match(String expected, String owner) {
         if (is(expected)) {
             advance();
@@ -105,30 +105,32 @@ public final class Parser {
         }
     }
 
-    // <programa> ::= elementos EOF
+    // um programa e formado por uma sequencia de elementos e termina com EOF
     private void parsePrograma() {
         parseElementos();
         match("EOF", "programa");
     }
 
-    // <elementos> ::= elemento elementos | ε
+    //reconhecer um elemento e reconhecer os seguintes ou terminar a lista
     private void parseElementos() {
+        //verifica se o token atual pode comecar um elemento
         if (is("ID") || is("bool") || is("char") || is("double") || is("int") || is("string")) {
             parseElemento();
             parseElementos();
         } else if (FirstFollow.follow("elementos").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(elementos).
+            // uando nao ha mais elementos, o token atual e EOF
         } else {
+            //quando aparece um token invalido
             error("elementos", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("elementos"));
             if (!is("EOF")) {
-                advance(); // consome a âncora abandonada após o erro
+                advance(); //consome a âncora abandonada após o erro
                 parseElementos();
             }
         }
     }
 
-    // <elemento> ::= elemento_tipado | procedimento
+    //os elementos sao formados por elementos tipados ou procedimentos
     private void parseElemento() {
         if (is("bool") || is("char") || is("double") || is("int") || is("string")) {
             parseElementoTipado();
@@ -140,7 +142,7 @@ public final class Parser {
         }
     }
 
-    // <tipo> ::= int | double | bool | char | string
+    //os tipos sao formados por int, double, bool, char e string
     private void parseTipo() {
         if (is("int")) {
             match("int", "tipo");
@@ -158,14 +160,14 @@ public final class Parser {
         }
     }
 
-    // <elemento_tipado> ::= tipo ID continuacao_tipado
+    // elementos tipados sao formados por tipo, identificador, e continuacao tipada
     private void parseElementoTipado() {
         parseTipo();
         match("ID", "elemento_tipado");
         parseContinuacaoTipado();
     }
 
-    // <continuacao_tipado> ::= ; | = expressao ; | ( parametros ) bloco
+    //continuacao tipada pode ser um ponto e virgula, ou um sinal de igual seguido de uma expressao e um ponto e virgula, ou um parenteses seguido de parametros e um bloco
     private void parseContinuacaoTipado() {
         if (is(";")) {
             match(";", "continuacao_tipado");
@@ -184,7 +186,7 @@ public final class Parser {
         }
     }
 
-    // <procedimento> ::= ID ( parametros ) bloco
+    //formados por um identificador, seguido de parentese com parametros e um bloco
     private void parseProcedimento() {
         match("ID", "procedimento");
         match("(", "procedimento");
@@ -193,21 +195,21 @@ public final class Parser {
         parseBloco();
     }
 
-    // <parametros> ::= tipo ID mais_parametros | ε
+    //parametros sao formados por um tipo, identificador e mais parametros
     private void parseParametros() {
         if (is("bool") || is("char") || is("double") || is("int") || is("string")) {
             parseTipo();
             match("ID", "parametros");
             parseMaisParametros();
         } else if (FirstFollow.follow("parametros").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(parametros).
+            //quando nao ha parametros
         } else {
             error("parametros", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("parametros"));
         }
     }
 
-    // <mais_parametros> ::= , tipo ID mais_parametros | ε
+    //mais parametros sao formados por uma virgula, um tipo, um identificador e mais parametros
     private void parseMaisParametros() {
         if (is(",")) {
             match(",", "mais_parametros");
@@ -215,38 +217,39 @@ public final class Parser {
             match("ID", "mais_parametros");
             parseMaisParametros();
         } else if (FirstFollow.follow("mais_parametros").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_parametros).
+            //quando nao ha mais parametros
         } else {
+            // token invalido
             error("mais_parametros", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_parametros"));
         }
     }
 
-    // <bloco> ::= { comandos }
+    //blocos sao formados por chaves e comandos dentro delas
     private void parseBloco() {
         match("{", "bloco");
         parseComandos();
         match("}", "bloco");
     }
 
-    // <comandos> ::= comando comandos | ε
+    //comandos sao formados por um comando seguido de mais comandos ou podem ser vazios
     private void parseComandos() {
         if (is("ID") || is("bool") || is("char") || is("double") || is("if") || is("int") || is("return") || is("string") || is("while") || is("{")) {
             parseComando();
             parseComandos();
         } else if (FirstFollow.follow("comandos").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(comandos).
+            // quando nao ha mais comandos
         } else {
             error("comandos", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("comandos"));
             if (!is("EOF") && !is("}")) {
-                advance(); // consome a âncora abandonada após o erro
+                advance(); // consome a âncora abandonada após o erro -> token atual nao pertence a FOLLOW e nem EOF, entao consome o token e tenta continuar a analise
                 parseComandos();
             }
         }
     }
 
-    // <comando> ::= declaracao_local | comando_id | selecao | repeticao | retorno | bloco
+    //comandos sao formados por declaracoes, comandos com id, selecoes, repeticos, retornos e blocos
     private void parseComando() {
         if (is("bool") || is("char") || is("double") || is("int") || is("string")) {
             parseDeclaracaoLocal();
@@ -266,7 +269,7 @@ public final class Parser {
         }
     }
 
-    // <declaracao_local> ::= tipo ID inicializacao ;
+    //declaracoes locais sao formados por tipo, identificador, inicializacao e ponto e virgula
     private void parseDeclaracaoLocal() {
         parseTipo();
         match("ID", "declaracao_local");
@@ -274,26 +277,29 @@ public final class Parser {
         match(";", "declaracao_local");
     }
 
-    // <inicializacao> ::= = expressao | ε
+    //inicializacao pode ser um sinal de igual seguido de uma expressao ou pode ser vazio
     private void parseInicializacao() {
         if (is("=")) {
             match("=", "inicializacao");
             parseExpressao();
         } else if (FirstFollow.follow("inicializacao").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(inicializacao).
+            //quando nao tem inicializacao
         } else {
             error("inicializacao", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("inicializacao"));
         }
     }
 
-    // <comando_id> ::= ID continuacao_comando_id
+    //omandos com id sao formados por um identificador seguido de uma continuacao de comando com id
     private void parseComandoId() {
         match("ID", "comando_id");
         parseContinuacaoComandoId();
     }
 
-    // <continuacao_comando_id> ::= = expressao ; | ( argumentos ) ;
+    //<continuacao_comando_id> ::= = expressao ; | ( argumentos ) ;
+    //analisa os tokens depois de receber um identificador, se o token atual for =, consome o token e chama parseExpressao e exige ;
+    //se for ( reconhece uma chamaada, consome (, analisa os argumentos e exige )
+    //caso contrario, registra um erro e sincroniza ate encontrar um token que possa ser analisado
     private void parseContinuacaoComandoId() {
         if (is("=")) {
             match("=", "continuacao_comando_id");
@@ -310,7 +316,7 @@ public final class Parser {
         }
     }
 
-    // <selecao> ::= if ( expressao ) bloco senao
+    //o if deve ser escrito na ordem if, (, <expressao>, ), <bloco>, else ou nada
     private void parseSelecao() {
         match("if", "selecao");
         match("(", "selecao");
@@ -320,7 +326,7 @@ public final class Parser {
         parseSenao();
     }
 
-    // <senao> ::= else bloco | ε
+    //verifica se existe um else depois do bloco ou vazio.
     private void parseSenao() {
         if (is("else")) {
             match("else", "senao");
@@ -333,7 +339,8 @@ public final class Parser {
         }
     }
 
-    // <repeticao> ::= while ( expressao ) bloco
+    //reconhece um comando while.
+    //espera While, "(", <expressao>, ")"
     private void parseRepeticao() {
         match("while", "repeticao");
         match("(", "repeticao");
@@ -343,103 +350,107 @@ public final class Parser {
     }
 
     // <retorno> ::= return valor_retorno ;
+    // reconhece e consome return, reconhece <expressao>, exige e consome ;
     private void parseRetorno() {
         match("return", "retorno");
         parseValorRetorno();
         match(";", "retorno");
     }
 
-    // <valor_retorno> ::= expressao | ε
+    //decide se o return tem uma expressao ou esta sem valor
     private void parseValorRetorno() {
         if (is("!") || is("(") || is("+") || is("-") || is("CHAR") || is("ID") || is("NUM") || is("STR") || is("false") || is("true")) {
             parseExpressao();
         } else if (FirstFollow.follow("valor_retorno").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(valor_retorno).
+            //o return nao tem valor, o token atual e ;
         } else {
             error("valor_retorno", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("valor_retorno"));
         }
     }
 
-    // <argumentos> ::= expressao mais_argumentos | ε
+    // reconhece os argumenots passados em uma chamada
+    // expressao seguida de outros argumento ou nenhum argumento 
     private void parseArgumentos() {
         if (is("!") || is("(") || is("+") || is("-") || is("CHAR") || is("ID") || is("NUM") || is("STR") || is("false") || is("true")) {
             parseExpressao();
             parseMaisArgumentos();
         } else if (FirstFollow.follow("argumentos").contains(symbol())) {
             // ε: o lookahead pertence a FOLLOW(argumentos).
+            //podemos considerar a lista de argumentos vazia porque o token que vem depois e valido
         } else {
             error("argumentos", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("argumentos"));
         }
     }
 
-    // <mais_argumentos> ::= , expressao mais_argumentos | ε
+    //reconhece os argumentos que vem depois do primeiro. separados por virgulas.
+    // uma virgula, outra expressao e possiveis argumentos seguintes ou nao.
     private void parseMaisArgumentos() {
         if (is(",")) {
             match(",", "mais_argumentos");
             parseExpressao();
             parseMaisArgumentos();
         } else if (FirstFollow.follow("mais_argumentos").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_argumentos).
+            // ε: o lookahead pertence a FOLLOW(mais_argumentos). -> a lista de argumentos terminou porque o token atual e ).
         } else {
             error("mais_argumentos", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_argumentos"));
         }
     }
 
-    // <expressao> ::= disjuncao
+    //expressao e formada por uma disjuncao
     private void parseExpressao() {
         parseDisjuncao();
     }
 
-    // <disjuncao> ::= conjuncao mais_disjuncao
+    // disjuncao e formada por uma conjuncao seguida de possiveis disjuncao adicionais
     private void parseDisjuncao() {
         parseConjuncao();
         parseMaisDisjuncao();
     }
 
-    // <mais_disjuncao> ::= || conjuncao mais_disjuncao | ε
+    // reconhece a continuacao de uma disjuncao com o operador ou
     private void parseMaisDisjuncao() {
         if (is("||")) {
             match("||", "mais_disjuncao");
             parseConjuncao();
             parseMaisDisjuncao();
         } else if (FirstFollow.follow("mais_disjuncao").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_disjuncao).
+            // nao ha mais || na expressao, o proximo token e ;
         } else {
             error("mais_disjuncao", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_disjuncao"));
         }
     }
 
-    // <conjuncao> ::= igualdade mais_conjuncao
+    //uma conjuncao e formada por uma igualdade, uma continuacao que pode conter && ou ser vazia.
     private void parseConjuncao() {
         parseIgualdade();
         parseMaisConjuncao();
     }
 
-    // <mais_conjuncao> ::= && igualdade mais_conjuncao | ε
+    // reconhece a continuacao de uma expressao com &&.
     private void parseMaisConjuncao() {
         if (is("&&")) {
             match("&&", "mais_conjuncao");
             parseIgualdade();
             parseMaisConjuncao();
         } else if (FirstFollow.follow("mais_conjuncao").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_conjuncao).
+            // a lista de conjunções terminou porque o token atual é ;.
         } else {
             error("mais_conjuncao", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_conjuncao"));
         }
     }
 
-    // <igualdade> ::= relacao mais_igualdade
+    // uma igualdade e formada por uma relacao seguida de possiveis continuacoes com == ou !=
     private void parseIgualdade() {
         parseRelacao();
         parseMaisIgualdade();
     }
 
-    // <mais_igualdade> ::= == relacao mais_igualdade | != relacao mais_igualdade | ε
+    //reconhece a continuacao de uma igualdade com == ou !=, ou pode ser vazia
     private void parseMaisIgualdade() {
         if (is("==")) {
             match("==", "mais_igualdade");
@@ -450,7 +461,7 @@ public final class Parser {
             parseRelacao();
             parseMaisIgualdade();
         } else if (FirstFollow.follow("mais_igualdade").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_igualdade).
+            // a lista de igualdades terminou porque o token atual é ;
         } else {
             error("mais_igualdade", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_igualdade"));
@@ -463,7 +474,7 @@ public final class Parser {
         parseMaisRelacao();
     }
 
-    // <mais_relacao> ::= < soma mais_relacao | > soma mais_relacao | <= soma mais_relacao | >= soma mais_relacao | ε
+    // econhece a continuacao de uma relacao com <, >, <= ou >=, ou pode ser vazia
     private void parseMaisRelacao() {
         if (is("<")) {
             match("<", "mais_relacao");
@@ -482,20 +493,20 @@ public final class Parser {
             parseSoma();
             parseMaisRelacao();
         } else if (FirstFollow.follow("mais_relacao").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_relacao).
+            // a lista de relacoes terminou porque o token atual é ;
         } else {
             error("mais_relacao", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_relacao"));
         }
     }
 
-    // <soma> ::= produto mais_soma
+    //uma soma e formada por um produto seguido de possiveis continuacoes com + ou - ou pode ser vazia
     private void parseSoma() {
         parseProduto();
         parseMaisSoma();
     }
 
-    // <mais_soma> ::= + produto mais_soma | - produto mais_soma | ε
+    //reconhece a continuacao de uma soma com + ou - ou pode ser vazia
     private void parseMaisSoma() {
         if (is("+")) {
             match("+", "mais_soma");
@@ -506,20 +517,20 @@ public final class Parser {
             parseProduto();
             parseMaisSoma();
         } else if (FirstFollow.follow("mais_soma").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_soma).
+            //a lista de somas terminou porque o token atual é ;
         } else {
             error("mais_soma", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_soma"));
         }
     }
 
-    // <produto> ::= unario mais_produto
+    //um produto e formado por um termo unario seguido de possiveis continuacoes com * ou /
     private void parseProduto() {
         parseUnario();
         parseMaisProduto();
     }
 
-    // <mais_produto> ::= * unario mais_produto | / unario mais_produto | ε
+    //econhece a continuacao de uma expressao com * ou /, ou pode ser vazia
     private void parseMaisProduto() {
         if (is("*")) {
             match("*", "mais_produto");
@@ -530,14 +541,14 @@ public final class Parser {
             parseUnario();
             parseMaisProduto();
         } else if (FirstFollow.follow("mais_produto").contains(symbol())) {
-            // ε: o lookahead pertence a FOLLOW(mais_produto).
+            //a lista de produtos terminou porque o token atual é ;.
         } else {
             error("mais_produto", "Token inesperado: " + symbol());
             sincronizar(FirstFollow.follow("mais_produto"));
         }
     }
 
-    // <unario> ::= ! unario | - unario | + unario | primario
+    // reconhece um operador unario seguido de outro unario ou um primario
     private void parseUnario() {
         if (is("!")) {
             match("!", "unario");
@@ -556,7 +567,7 @@ public final class Parser {
         }
     }
 
-    // <primario> ::= NUM | STR | CHAR | true | false | ID sufixo_id | ( expressao )
+    //primario pode ser um numero, uma string, um char, true, false, um identificador seguido de possiveis argumentos ou uma expressao entre parenteses
     private void parsePrimario() {
         if (is("NUM")) {
             match("NUM", "primario");
@@ -581,7 +592,7 @@ public final class Parser {
         }
     }
 
-    // <sufixo_id> ::= ( argumentos ) | ε
+    //reconhece os argumentos passados em uma chamada de função, ou pode ser vazio
     private void parseSufixoId() {
         if (is("(")) {
             match("(", "sufixo_id");
@@ -594,6 +605,8 @@ public final class Parser {
             sincronizar(FirstFollow.follow("sufixo_id"));
         }
     }
+
+    //classe que representa um erro de análise
     public static final class ParseError {
         public final String natureza;
         public final String contexto;
@@ -617,7 +630,7 @@ public final class Parser {
                     natureza, contexto, linha, coluna, mensagem, encontrado);
         }
     }
-
+    //classe que representa o resultado da análise, contendo a lista de erros e se chegou ao fim do arquivo
     public static final class ParseResult {
         private final List<ParseError> erros;
         private final boolean chegouAoFim;
@@ -639,7 +652,7 @@ public final class Parser {
             return erros;
         }
     }
-
+    //classe que representa o conjunto de FIRST e FOLLOW para cada não-terminal da gramática
     private static final class FirstFollow {
         private static final Map<String, Set<String>> FIRST = new LinkedHashMap<>();
         private static final Map<String, Set<String>> FOLLOW = new LinkedHashMap<>();

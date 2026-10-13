@@ -3,22 +3,23 @@ package analisador_lexico;
 import analisador_lexico.Parser.ParseError;
 import analisador_lexico.Parser.ParseResult;
 
-/** Suíte mínima do CP2: 3 válidos, 3 inválidos e 1 com múltiplos erros. */
+
+//arquivo de testes minimo para o checkpoint 2, com 3 casos validos, 3 invalidos e 1 com multiplos erros
 public class ParserTest {
     private static int testes = 0;
 
-    private static void verificar(boolean condicao, String mensagem) {
+    private static void verificarErro(boolean condicao, String mensagem) {
         if (!condicao) throw new AssertionError(mensagem);
     }
 
     private static ParseResult testar(String nome, String codigo, boolean valido) {
         ParseResult resultado = new Parser(codigo).parse();
-        verificar(resultado.reachedEnd(), nome + ": não chegou ao EOF");
-        verificar(resultado.isAccepted() == valido, nome + ": aceitação incorreta");
+        verificarErro(resultado.reachedEnd(), nome + ": não chegou ao EOF");
+        verificarErro(resultado.isAccepted() == valido, nome + ": aceitação incorreta");
         if (!valido) {
-            verificar(!resultado.getErrors().isEmpty(), nome + ": não reportou erro");
+            verificarErro(!resultado.getErrors().isEmpty(), nome + ": não reportou erro");
             for (ParseError erro : resultado.getErrors()) {
-                verificar(erro.linha > 0 && erro.coluna > 0, nome + ": erro sem localização");
+                verificarErro(erro.linha > 0 && erro.coluna > 0, nome + ": erro sem localização");
                 System.out.println(erro);
             }
         }
@@ -55,11 +56,11 @@ public class ParserTest {
                 "    x = 1 + ;\n" +
                 "    return;\n" +
                 "}\n", false);
-        verificar(multiplo.getErrors().stream().anyMatch(e -> e.linha == 2),
+        verificarErro(multiplo.getErrors().stream().anyMatch(e -> e.linha == 2),
                 "Não detectou o primeiro erro, na linha 2");
-        verificar(multiplo.getErrors().stream().anyMatch(e -> e.linha == 3),
+        verificarErro(multiplo.getErrors().stream().anyMatch(e -> e.linha == 3),
                 "Não recuperou para detectar o segundo erro, na linha 3");
-        verificar(multiplo.getErrors().stream().noneMatch(e -> e.linha == 4),
+        verificarErro(multiplo.getErrors().stream().noneMatch(e -> e.linha == 4),
                 "Erro indevido no retorno válido após a recuperação");
 
         System.out.println("TOTAL: " + testes + " testes passaram.");
