@@ -1,3 +1,4 @@
+feito por: Caio Oliveira Lima e Vitor Ferreira França 
 # Checkpoint 2 — Gramática, FIRST/FOLLOW e verificação LL(1)
 
 ## 1. Status e decisões
